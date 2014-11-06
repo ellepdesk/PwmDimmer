@@ -2,27 +2,27 @@
 #include "stdint.h"
 #include "stdbool.h"
 
-inline void setbit(uint8_t* address, uint8_t bit)
+inline void setbit(volatile uint8_t& address, uint8_t bit)
 {
-    *address |= (1<<bit);
+    address |= (1<<bit);
 }
 
-inline void clrbit(uint8_t* address, uint8_t bit)
+inline void clrbit(volatile uint8_t& address, uint8_t bit)
 {
-    *address &= ~(1<<bit);
+    address &= ~(1<<bit);
 }
 
-inline void cplbit(uint8_t* address, uint8_t bit)
+inline void cplbit(volatile uint8_t& address, uint8_t bit)
 {
-    *address ^= (1<<bit);
+    address ^= (1<<bit);
 }
 
-inline bool readbit(uint8_t* address, uint8_t bit)
+inline bool readbit(volatile uint8_t& address, uint8_t bit)
 {
-    return (*address & (1<<bit));
+    return (address & (1<<bit));
 }
 
-inline void writebit(uint8_t* address, uint8_t bit, bool value)
+inline void writebit(volatile uint8_t& address, uint8_t bit, bool value)
 {
     value ? setbit(address, value) : clrbit(address, value);
 }
