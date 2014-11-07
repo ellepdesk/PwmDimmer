@@ -5,10 +5,14 @@
 
     Behavior
     Upon power on the output will be OFF, stored brightness will be MAX
+
+    Led off:
     When the button is pressed shortly, the output will be turned ON using the stored brightness
-    When the button is pressed longer the output will be turned on, with brightness set to min.
-    When the led is on, pressing the button shortly will turn the led off, storing the brightness
-    When the button is pressed longer, the brightness will be adjusted.
+    When the button is held longer the output will be turned on, with brightness set to min.
+
+    Led on:
+    Pressing the button shortly will turn the led off, storing the brightness
+    Pressing the button longer, the brightness will be adjusted.
     The direction of the adjustment (brighter/dimmer) will be toggled on each long press
     When the button is held, the adjustment will limit at MIN or MAX, depending on the direction
  */
@@ -29,7 +33,7 @@ static bool countUp = false;
 static uint16_t tick_counter = 0;
 static state s = OFF;
 
-void SetupPwm()
+void setupPwm()
 {
     //Set up timer for fast-pwm
     TCCR0A = 0b10000011;
@@ -37,7 +41,7 @@ void SetupPwm()
     GTCCR  = 0b00000001;
 }
 
-void DeSetupPwm()
+void deSetupPwm()
 {
     //Clear timer registers
     GTCCR  = 0b00000000;
@@ -51,7 +55,7 @@ void sleep()
     _delay_loop_2(delay);
 }
 
-bool button_pressed()
+bool pollButton()
 {
     bool toReturn = false;
     if (!readbit(PINB, PINB4))
@@ -63,10 +67,14 @@ bool button_pressed()
             toReturn = true;
         }
     }
+    else
+    {
+        sleep();
+    }
     return toReturn;
 }
 
-void adjust_brightness()
+void brightnessAdjust()
 {
     if (countUp)
     {
@@ -80,13 +88,13 @@ void adjust_brightness()
     }
 }
 
-void handle_state()
+void handleState(bool button)
 {
     switch (s)
     {
         case OFF:
         case ON:
-        if (button_pressed())
+        if (button)
         {
             tick_counter = 0;
             s = (s == ON) ? ON_BUTTON_PRESSED : OFF_BUTTON_PRESSED;
@@ -94,20 +102,20 @@ void handle_state()
         break;
 
         case OFF_BUTTON_PRESSED:
-        {
         tick_counter++;
+        //long press -> on at MIN
         if (tick_counter > 20)
         {
             OCR0A = 0x0;
             countUp = true;
-            SetupPwm();
+            setupPwm();
             s = ON;
         }
-        if (! button_pressed())
+        //short press -> on
+        if (! button)
         {
-            SetupPwm();
+            setupPwm();
             s = ON;
-        }
         }
         break;
 
@@ -116,16 +124,16 @@ void handle_state()
         if (tick_counter < 20)
         {
             //short press -> off
-            if (! button_pressed())
+            if (! button)
             {
                 s = OFF;
-                DeSetupPwm();
+                deSetupPwm();
             }
         }
         else
         {
             //long press -> change brightness
-            if (! button_pressed())
+            if (! button)
             {
                 //on release change direction
                 s = ON;
@@ -133,7 +141,7 @@ void handle_state()
             }
             else
             {
-                adjust_brightness();
+                brightnessAdjust();
             }
         }
         break;
@@ -148,8 +156,8 @@ int main(void)
     OCR0A = 0xFF;
     while (true)
     {
-        handle_state();
-        sleep();
+        bool button = pollButton();
+        handleState(button);
     }
     return 0;
 }
