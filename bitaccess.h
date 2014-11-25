@@ -1,3 +1,11 @@
+/*
+    Bit accessors
+    Author: P.S. van der Heide
+
+    convenience functions for bit manipulation
+    set, clear, complement, read, and write
+*/
+
 #pragma once
 #include "stdint.h"
 #include "stdbool.h"
