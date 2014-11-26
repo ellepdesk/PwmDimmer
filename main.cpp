@@ -4,17 +4,7 @@
     Target: Atmel Tiny25
 
     Behavior
-    Upon power on the output will be OFF, stored brightness will be MAX
-
-    Led off:
-    When the button is pressed shortly, the output will be turned ON using the stored brightness
-    When the button is held longer the output will be turned on, with brightness set to min.
-
-    Led on:
-    Pressing the button shortly will turn the led off, storing the brightness
-    Pressing the button longer, the brightness will be adjusted.
-    The direction of the adjustment (brighter/dimmer) will be toggled on each long press
-    When the button is held, the adjustment will limit at MIN or MAX, depending on the direction
+    read potmeter on ADC3 and adjust brightness accordingly
  */
 
 #include <avr/io.h>
@@ -22,6 +12,19 @@
 #include <avr/sleep.h>
 #include "bitaccess.h"
 #include <util/delay_basic.h>
+
+//enum state
+//{
+//    OFF,
+//    OFF_BUTTON_PRESSED,
+//    ON,
+//    ON_BUTTON_PRESSED,
+//};
+
+//static bool countUp = false;//
+//static uint16_t tick_counter = 0;
+//static state s = OFF;
+static volatile uint16_t adcValue = 1023;
 
 //only for wake-up
 EMPTY_INTERRUPT(PCINT0_vect);
@@ -31,17 +34,14 @@ ISR(TIM1_COMPA_vect)
     clrbit(GTCCR,0);
 }
 
-enum state
+ISR(ADC_vect)
 {
-    OFF,
-    OFF_BUTTON_PRESSED,
-    ON,
-    ON_BUTTON_PRESSED,
-};
+    uint16_t low, high;
+    low = ADCL;
+    high = ADCH;
+    adcValue = high * 256 + low;
 
-static bool countUp = false;
-static uint16_t tick_counter = 0;
-static state s = OFF;
+}
 
 void setupSleepTimer()
 {
@@ -66,6 +66,18 @@ void deSetupPwm()
     TCCR0B = 0b00000000;
 }
 
+void setupAdc()
+{
+    setbit(DIDR0, ADC3D);
+    ADMUX = 0b00000011; //vcc as vref, align right, select ADC3
+    ADCSRA = 0b11101101; //enable adc, start conversion, enable interrupt, 32x prescaler
+}
+
+void startAdcConversion()
+{
+    setbit(ADCSRA,ADSC);
+}
+
 void sleep(uint8_t period = 0)
 {
     if (period > 0)
@@ -83,104 +95,6 @@ void sleep(uint8_t period = 0)
     //_delay_loop_2(delay);
 }
 
-bool pollButton()
-{
-    bool toReturn = false;
-    if (!readbit(PINB, PINB4))
-    {
-        //de-bounce
-        sleep(100);
-        if (!readbit(PINB, PINB4))
-        {
-            toReturn = true;
-        }
-    }
-    else
-    {
-        sleep(100);
-    }
-    return toReturn;
-}
-
-void brightnessAdjust()
-{
-    if (countUp)
-    {
-        if (OCR0A < 255)
-            OCR0A++;
-    }
-    else
-    {
-        if (OCR0A > 0)
-            OCR0A--;
-    }
-}
-
-bool handleState(bool button)
-{
-    bool busy = false;
-    switch (s)
-    {
-        case OFF:
-        case ON:
-        if (button)
-        {
-            tick_counter = 0;
-            busy = true;
-            s = (s == ON) ? ON_BUTTON_PRESSED : OFF_BUTTON_PRESSED;
-        }
-        break;
-
-        case OFF_BUTTON_PRESSED:
-        busy = true;
-        tick_counter++;
-        //long press -> on at MIN
-        if (tick_counter > 10)
-        {
-            OCR0A = 0x0;
-            countUp = true;
-            setupPwm();
-            s = ON_BUTTON_PRESSED;
-        }
-        //short press -> on
-        if (! button)
-        {
-            setupPwm();
-            s = ON;
-        }
-        break;
-
-        case ON_BUTTON_PRESSED:
-        busy = true;
-        tick_counter++;
-        if (tick_counter < 10)
-        {
-            //short press -> off
-            if (! button)
-            {
-                s = OFF;
-                deSetupPwm();
-            }
-        }
-        else
-        {
-            //long press -> change brightness
-            if (! button)
-            {
-                //on release change direction
-                s = ON;
-                countUp = !countUp;
-            }
-            else if (tick_counter > 20)
-            {
-                brightnessAdjust();
-            }
-        }
-        break;
-    }
-    return busy;
-}
-
 int main(void)
 {
     setbit(DDRB,DDB0);
@@ -192,17 +106,29 @@ int main(void)
     setbit(PCMSK, PCINT4);
     OCR0A = 0xFF;
     sei();
+    setupAdc();
     sleep_enable();
     set_sleep_mode(SLEEP_MODE_IDLE);
     while (true)
     {
-        bool button = pollButton();
-        if (!handleState(button))
+        //startAdcConversion();
+        _delay_loop_2(0x2FF);
+
+        if (adcValue > 768)
         {
-            sleep(0);
-            //allow deep sleep
-            //wake up by pin change
+            deSetupPwm();
         }
+        else if (adcValue < 512)
+        {
+            setupPwm();
+            OCR0A = 255 - (adcValue/2);
+        }
+        else
+        {
+            setupPwm();
+            OCR0A = 0;
+        }
+
     }
     return 0;
 }
