@@ -36,11 +36,15 @@ ISR(TIM1_COMPA_vect)
 
 ISR(ADC_vect)
 {
-    uint16_t low, high;
-    low = ADCL;
+    uint16_t low, high, value;
+    low = ADCL;     //ADCL must be read first
     high = ADCH;
-    adcValue = high * 256 + low;
+    value = high * 256 + low;
 
+    // IIR filter
+    // use 15/16ths of old value and 1/16th of the new value
+    const uint16_t factor_16 = 15;
+    adcValue = ((adcValue * factor_16) + (value * (16 - factor_16))) / 16;
 }
 
 void setupSleepTimer()
@@ -69,13 +73,9 @@ void deSetupPwm()
 void setupAdc()
 {
     setbit(DIDR0, ADC3D);
-    ADMUX = 0b00000011; //vcc as vref, align right, select ADC3
-    ADCSRA = 0b11101101; //enable adc, start conversion, enable interrupt, 32x prescaler
-}
-
-void startAdcConversion()
-{
-    setbit(ADCSRA,ADSC);
+    ADMUX = 0b00000011;  // vcc as vref, align right, select ADC3
+    ADCSRA = 0b11101111; // enable adc, external trigger, start conversion, enable interrupt, 128x prescaler
+                         // trigger source = 0, continous conversion
 }
 
 void sleep(uint8_t period = 0)
@@ -86,19 +86,12 @@ void sleep(uint8_t period = 0)
         setupSleepTimer();
     }
     sleep_cpu();
-    //when value > 0
-    //  load timer 1 with value
-    //  start timer
-    //go to low-power mode
-    //will return on either button or timeout
-    //const uint16_t delay = 0xFFF;
-    //_delay_loop_2(delay);
 }
 
 int main(void)
 {
     setbit(DDRB,DDB0);
-    setbit(DDRB,DDB3);
+    setbit(DDRB,DDB2);
 
     //enable pin-change interrupt in PB4, using internal pull-up
     setbit(PORTB,PORTB4);
@@ -111,9 +104,8 @@ int main(void)
     set_sleep_mode(SLEEP_MODE_IDLE);
     while (true)
     {
-        //startAdcConversion();
-        _delay_loop_2(0x2FF);
-
+        // wait for adc interrupt
+        sleep();
         if (adcValue > 768)
         {
             deSetupPwm();
