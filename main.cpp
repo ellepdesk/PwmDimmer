@@ -42,9 +42,11 @@ ISR(ADC_vect)
     value = high * 256 + low;
 
     // IIR filter
-    // use 15/16ths of old value and 1/16th of the new value
-    const uint16_t factor_16 = 15;
-    adcValue = ((adcValue * factor_16) + (value * (16 - factor_16))) / 16;
+    // n-1 times the old value
+    // plus the new value
+    // plus n/2 - 1, to ensure equal rounding
+    // devided by n
+    adcValue = ((adcValue * 63) + (value) + 31) / 64;
 }
 
 void setupSleepTimer()
